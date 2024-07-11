@@ -1,7 +1,11 @@
-import { render as renderQwik } from "@builder.io/qwik";
-import { ArgsStoryFn, RenderContext } from "@storybook/types";
+import { inlinedQrl, render as renderQwik } from "@builder.io/qwik";
+import { ArgsEnhancer, ArgsStoryFn, RenderContext } from "@storybook/types";
 import { QwikRenderer } from "./types.js";
 import { componentToJSX } from "./component-to-jsx.js";
+import {
+  addActionsFromArgTypes,
+  inferActionsFromArgTypesRegex,
+} from "./addArgsHelpers.js";
 export { parameters, argTypesEnhancers } from "./docs/config.js";
 
 // returns the Qwik component as a JSX element (</MyComponent>)
@@ -16,12 +20,12 @@ export const render: ArgsStoryFn<QwikRenderer<unknown>> = (args, context) => {
 
 export async function renderToCanvas<T>(
   { storyFn, showMain }: RenderContext<QwikRenderer<T>>,
-  canvasElement: QwikRenderer<T>["canvasElement"]
+  canvasElement: QwikRenderer<T>["canvasElement"],
 ) {
   const container = document.createElement("div");
-  await renderQwik(container, storyFn());
   canvasElement.childNodes.forEach((c) => c.remove());
   canvasElement.append(container);
+  await renderQwik(container, storyFn());
   showMain();
 }
 
@@ -33,3 +37,21 @@ if (viteHotMeta) {
     document.location.reload();
   });
 }
+
+const actionsArgsEnhancers: ArgsEnhancer[] = [
+  addActionsFromArgTypes,
+  inferActionsFromArgTypesRegex,
+];
+
+export const argsEnhancers: ArgsEnhancer[] =
+  // use the argsEnhancers from addon-actions, then wrap the actions in Qwik's inlinedQrl function so things work.
+  actionsArgsEnhancers.map((actionsEnhancer: ArgsEnhancer) => {
+    return ((context) => {
+      const argsWithActions = actionsEnhancer(context);
+      let finalArgs: any = {};
+      Object.keys(argsWithActions).forEach((key) => {
+        finalArgs[key] = inlinedQrl(argsWithActions[key], key);
+      });
+      return finalArgs;
+    }) as ArgsEnhancer;
+  });
